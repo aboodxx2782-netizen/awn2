@@ -1,0 +1,30 @@
+{
+  "summary": "Full E2E first-run of AWN (عون). Backend: 18/18 pytest tests passed (100%) covering guides (list=12, get by slug, 404), products (10), AEDs (12 sorted by distance), emergency create+state progression (dispatched -> accepted -> en_route/on_scene) + cancel, invalid category 400, medical-id GET/PUT persistence, checkout with VAT 15% + delivery fee (25 SAR under 150 / free at/above 150), invalid payment_method 400, empty items 400, orders history, and the Smart First-Aid Assistant streaming (SSE with delta+done, Arabic reply, '997' present for life-threatening prompt, multi-turn history persistence, DELETE history). Frontend (390x844 mobile viewport): Home renders SOS, category chips, assistant card and medical-id button; dispatch flow works and navigates to /emergency/{id} with radar LiveMap + 6 responder cards + cancel & call-997 buttons; Assistant tab streams a full Arabic reply from Gemini 3 Flash within ~10s starting with the '⚠️ اتصل بالهلال الأحمر 997' safety line and includes '❌ لا تفعل:' anti-myth section; Guide tab lists 12 cards, CPR detail shows 6 steps + 2 warnings; AED tab renders radar + 12 cards; Store: 10 products, add-to-cart -> checkout -> mada -> order confirmation (order number AWN-90565889, total 308.20 SAR shown, VAT 40.20); Medical ID form saves and value persists after reload. Only console noise: one benign 'GO_BACK was not handled' warning when confirm-cancel alert closes on web (React Native Alert.alert -> window.confirm behavior).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "emergency/[id]", "issues": ["After tapping cancel-emergency-button, the native web confirm() alert must be accepted manually; in automated context the app logs a benign 'GO_BACK was not handled' navigator warning. Consider routing to '/' explicitly after cancel confirmation instead of router.back() to avoid this edge case when the emergency screen is opened directly via URL."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "(optional) In /app/frontend/app/emergency/[id].tsx replace router.back() after cancel confirmation with router.replace('/(tabs)') so users landing directly on the emergency URL still return home reliably."
+  ],
+  "critical_code_review_comments": [
+    "server.py: catch block in assistant event_generator uses `except Exception as exc` but variable `exc` is unused (ruff would flag). Minor.",
+    "server.py: /api/emergencies/{id} parses ObjectId; invalid ids return 400 which is correct. Good.",
+    "server.py: MongoDB _id properly excluded via from_mongo/BaseDocument pattern - clean.",
+    "server.py: emergency create endpoint uses str(uuid.uuid4()) as _id in Emergency.to_mongo (via id field). Then get_emergency parses ObjectId which will fail for those UUIDs -- BUT insert_one ignores the string _id and generates its own ObjectId; response uses inserted_id. Works, but the id field on the Emergency model is misleading and unused. Consider dropping the manual id assignment.",
+    "Backend server.py is ~935 lines; fine for now but if it grows further split into routers (assistant/emergencies/store/guides)."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py", "/app/backend/tests/__init__.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "No manual seed needed - ensure_seed() populates 12 guides and 10 products on startup. TEST_ prefixed medical profile + order docs created during pytest; safe to leave.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend URL comes from /app/frontend/.env EXPO_PUBLIC_BACKEND_URL. Assistant tests take ~30s total (Gemini streaming). Use `pytest /app/backend/tests/backend_test.py -v` to rerun; all 18 tests parametrised cleanly and clean up their own device_ids. For frontend, use viewport 390x844, testIDs are all standard data-testid attributes matching those in problem statement. The RN Alert confirm dialog on web auto-resolves in Playwright, so cancel-emergency doesn't route back to home automatically in tests - inspect API state via GET /api/emergencies/{id} to verify cancelled status instead.",
+  "rca_of_issue": "N/A - no blocking bugs. Only observation: cancel button uses Alert.alert which maps to window.confirm on web; when accepted it uses router.back() which fails if the emergency screen is the entry point (direct URL). Recommend router.replace('/') for robustness."
+}
